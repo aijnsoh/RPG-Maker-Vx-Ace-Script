@@ -1,0 +1,86 @@
+#==============================================================================
+#  Script: Tăng chỉ số theo số lượng vàng
+#  Author: Aijn Soh
+#------------------------------------------------------------------------------
+#  Hướng dẫn:
+#  Thêm lệnh dưới vào Note Tag của Vũ Khí hoặc Trang Bị.
+#  Ví dụ một vũ khí trong một Note Tag:
+#  <GoldATKBonus>
+#  <GoldPerPoint_ATK: 3000>  # 3000 vàng cho mỗi điểm ATK
+#  <ATKIncrease: 2>           # Tăng 2 điểm ATK cho mỗi mức vàng
+#  <GoldDEFBonus>
+#  <GoldPerPoint_DEF: 4000>  # 4000 vàng cho mỗi điểm DEF
+#  <DEFIncrease: 3>           # Tăng 3 điểm DEF cho mỗi mức vàng
+#==============================================================================
+
+# Module để chứa các phương thức cần thiết
+module GoldStatBonus
+  # Hàm để lấy giá trị GOLD_PER_POINT từ note
+  def self.get_gold_per_point(note, stat)
+    # Mặc định là 5000
+    default_value = 5000
+    # Tìm kiếm giá trị trong note cho từng chỉ số
+    if note =~ /<GoldPerPoint_#{stat}:\s*(\d+)>/i
+      return $1.to_i
+    end
+    default_value
+  end
+
+  # Hàm để lấy số điểm cần cộng cho từng chỉ số
+  def self.get_stat_increase(note, stat)
+    if note =~ /<#{stat}Increase:\s*(\d+)>/i
+      return $1.to_i
+    end
+    1  # Mặc định tăng 1 điểm nếu không có chỉ định
+  end
+
+  # Đọc Note tag và kiểm tra nếu trang bị có bonus cho một chỉ số cụ thể
+  def self.equip_has_stat_bonus?(item, stat)
+    return false if item.nil? || !item.is_a?(RPG::EquipItem)
+    # Kiểm tra nếu note của trang bị chứa từ khóa cho chỉ số tương ứng
+    item.note =~ /<Gold#{stat}Bonus>/i
+  end
+  
+  # Tính toán số điểm bonus dựa trên số lượng vàng hiện tại
+  def self.calculate_bonus(gold, gold_per_point, stat_increase)
+    (gold / gold_per_point) * stat_increase
+  end
+end
+
+# Ghi đè lại phương thức để tính toán chỉ số cộng thêm cho nhân vật
+class Game_BattlerBase
+  alias original_param_plus param_plus
+  
+  # Phương thức này trả về tổng chỉ số cộng thêm cho các chỉ số
+  def param_plus(param_id)
+    value = original_param_plus(param_id)
+    if self.is_a?(Game_Actor)
+      # Định nghĩa tên chỉ số tương ứng với param_id
+      stat_name = case param_id
+        when 0 then "MHP"  # Máu tối đa
+        when 1 then "MMP"  # Mana tối đa
+        when 2 then "ATK"  # Tấn công
+        when 3 then "DEF"  # Phòng thủ
+        when 4 then "MAT"  # Tấn công phép
+        when 5 then "MDF"  # Phòng thủ phép
+        when 6 then "AGI"  # Tốc độ
+        when 7 then "LUK"  # May mắn
+        else ""
+      end
+      
+      # Duyệt qua tất cả trang bị của nhân vật
+      equips.each do |equip|
+        next if equip.nil?
+        # Kiểm tra nếu trang bị có bonus cho chỉ số tương ứng
+        if GoldStatBonus.equip_has_stat_bonus?(equip, stat_name)
+          # Lấy giá trị GOLD_PER_POINT và số điểm cần cộng từ note của trang bị
+          gold_per_point = GoldStatBonus.get_gold_per_point(equip.note, stat_name)
+          stat_increase = GoldStatBonus.get_stat_increase(equip.note, stat_name)
+          # Cộng thêm điểm cho chỉ số dựa trên số vàng hiện tại
+          value += GoldStatBonus.calculate_bonus($game_party.gold, gold_per_point, stat_increase)
+        end
+      end
+    end
+    return value
+  end
+end
