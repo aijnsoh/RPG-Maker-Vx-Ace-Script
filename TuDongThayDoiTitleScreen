@@ -1,0 +1,68 @@
+#==============================================================================
+#  Script: Tự Động Thay Đổi Title Screen
+#  Author: Aijn Soh
+#------------------------------------------------------------------------------
+#  Hướng dẫn:
+#  Thay đổi các tên file ở đoạn mã titles, ví dụ:
+#  titles = ["【DLC1】.png", "【DLC2】.png", "【DLC3】.png"]
+#==============================================================================
+
+# Module chứa logic quản lý và thay đổi title screen
+module RandomTitleScreen
+  # Danh sách các tên file hình ảnh title có sẵn trong thư mục Graphics/Titles
+  # Bao gồm cả hình nền mặc định từ database
+  def self.titles
+    titles = ["【DLC1】.png", "【DLC2】.png", "【DLC3】.png"]
+    # Thêm hình nền mặc định từ database vào danh sách
+    titles << $data_system.title1_name
+    return titles
+  end
+
+  # Hàm lấy ngẫu nhiên một hình ảnh từ danh sách
+  def self.random_title_image
+    titles.sample # .sample sẽ lấy ngẫu nhiên một phần tử trong mảng
+  end
+
+  # Kiểm tra xem có sử dụng hình nền mặc định không
+  def self.default_title?(title)
+    title == $data_system.title1_name
+  end
+end
+
+# Lớp Scene_Title chịu trách nhiệm hiển thị màn hình title
+class Scene_Title < Scene_Base
+  # Ghi đè lại phương thức create_background để thay đổi hình nền title screen
+  alias_method :original_create_background, :create_background
+
+  def create_background
+    # Lấy tên hình ảnh title ngẫu nhiên (bao gồm cả hình nền mặc định)
+    random_title = RandomTitleScreen.random_title_image
+
+    # Đặt hình ảnh title vào màn hình
+    @sprite1 = Sprite.new
+    @sprite1.bitmap = Cache.title1(random_title)
+
+    # Đảm bảo rằng hình ảnh được hiển thị toàn màn hình
+    @sprite1.zoom_x = Graphics.width.to_f / @sprite1.bitmap.width
+    @sprite1.zoom_y = Graphics.height.to_f / @sprite1.bitmap.height
+
+    # Kiểm tra nếu hình nền được chọn là mặc định, thêm cả Title2
+    if RandomTitleScreen.default_title?(random_title)
+      @sprite2 = Sprite.new
+      @sprite2.bitmap = Cache.title2($data_system.title2_name) unless $data_system.title2_name.empty?
+
+      # Đảm bảo rằng hình ảnh title2 được hiển thị toàn màn hình
+      if @sprite2
+        @sprite2.zoom_x = Graphics.width.to_f / @sprite2.bitmap.width
+        @sprite2.zoom_y = Graphics.height.to_f / @sprite2.bitmap.height
+      end
+    end
+  end
+
+  # Đừng quên xoá sprite khi kết thúc Scene_Title
+  def terminate
+    super
+    @sprite1.dispose if @sprite1
+    @sprite2.dispose if @sprite2
+  end
+end
