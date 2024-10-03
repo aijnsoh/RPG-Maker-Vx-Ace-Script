@@ -1,0 +1,104 @@
+#==============================================================================
+#  Script: Tấn Công Giảm Vàng
+#  Author: Aijn Soh
+#------------------------------------------------------------------------------
+#  Thông tin:
+#  Script cho phép actor chính có cơ hội mất vàng sau mỗi lần tấn công 
+#  kẻ địch. Tỷ lệ mất vàng và số vàng mất đi được thiết lập qua note tag 
+#  trong trang bị của nhân vật.
+#------------------------------------------------------------------------------
+#  Hướng dẫn:
+#  Thêm lệnh dưới vào Note Tag của Vũ Khí hoặc Trang Bị.
+#  <GoldPenalty_Chance: x>   : tỉ lệ mất vàng (x là phần trăm, từ 0 đến 100)
+#  <GoldPenalty_Amount: y>   : số vàng mất đi mỗi lần tấn công (y là số lượng vàng)
+#==============================================================================
+
+module GoldPenaltyOnAttack
+
+  def self.gold_chance(item)
+    note = item.note[/\<GoldPenalty_Chance:\s*(\d+)\>/i]
+    note ? $1.to_i : 0
+  end
+
+  def self.gold_amount(item)
+    note = item.note[/\<GoldPenalty_Amount:\s*(\d+)\>/i]
+    note ? $1.to_i : 0
+  end
+end
+
+class Game_Battler < Game_BattlerBase
+  alias gold_penalty_on_attack_make_damage_value make_damage_value
+
+  def make_damage_value(user, item)
+    if user.actor?
+      sufficient_gold = true
+
+      user.equips.compact.each do |equip|
+        next unless equip
+
+        # Kiểm tra tỉ lệ và số vàng yêu cầu trong trang bị
+        chance = GoldPenaltyOnAttack.gold_chance(equip)
+        gold_amount = GoldPenaltyOnAttack.gold_amount(equip)
+
+        if chance > 0 && rand(100) < chance
+          # Kiểm tra xem người chơi có đủ vàng hay không
+          if $game_party.gold < gold_amount
+            sufficient_gold = false
+            break
+          end
+        end
+      end
+
+      # Nếu không đủ vàng, sát thương gây ra sẽ là 0
+      unless sufficient_gold
+        @result.hp_damage = 0  # Đặt sát thương HP về 0
+        $game_message.add("#{user.name} không đủ Vàng để tấn công!")
+        return
+      end
+    end
+
+    # Nếu đủ vàng, thực hiện tính sát thương bình thường
+    gold_penalty_on_attack_make_damage_value(user, item)
+  end
+
+  alias gold_penalty_on_attack_execute_damage execute_damage
+
+  def execute_damage(user)
+    gold_penalty_on_attack_execute_damage(user)
+    return unless user.actor?
+
+    sufficient_gold = true
+
+    user.equips.compact.each do |equip|
+      next unless equip
+
+      # Kiểm tra tỉ lệ mất vàng và số vàng được thiết lập trong trang bị
+      chance = GoldPenaltyOnAttack.gold_chance(equip)
+      gold_amount = GoldPenaltyOnAttack.gold_amount(equip)
+
+      if chance > 0 && rand(100) < chance
+        # Kiểm tra lại xem diễn viên có đủ vàng để mất hay không
+        if $game_party.gold < gold_amount
+          sufficient_gold = false
+          break
+        end
+      end
+    end
+
+    # Nếu diễn viên có đủ vàng thì trừ vàng, nếu không thì không trừ
+    if sufficient_gold
+      user.equips.compact.each do |equip|
+        next unless equip
+
+        chance = GoldPenaltyOnAttack.gold_chance(equip)
+        gold_amount = GoldPenaltyOnAttack.gold_amount(equip)
+
+        if chance > 0 && rand(100) < chance
+          $game_party.lose_gold(gold_amount)  # Trừ vàng
+          # Hiển thị thông báo về lượng vàng mất đi
+          $game_message.add("#{user.name} đã mất #{gold_amount} Vàng!")
+        end
+      end
+    end
+  end
+end
