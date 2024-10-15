@@ -124,11 +124,11 @@ class Scene_Battle < Scene_Base
     @log_window.update if @log_window
   end
 
-  # Xử lý hồi máu sau thời gian chờ 60 frame
+  # Xử lý hồi máu sau thời gian chờ 30 frame
   def delay_hp_recovery(target, user, recovery_info_self, recovery_info_user)
     @hp_recovery_target = target
     @hp_recovery_user = user
-    @hp_recovery_frame_count = 60  # Chờ 60 frame
+    @hp_recovery_frame_count = 30  # Chờ 30 frame
     @hp_recovery_info_self = recovery_info_self # Lưu thông tin hồi máu từ đối tượng bị tấn công
     @hp_recovery_info_user = recovery_info_user # Lưu thông tin hồi máu từ đối tượng tấn công
   end
