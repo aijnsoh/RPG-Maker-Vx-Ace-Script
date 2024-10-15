@@ -1,0 +1,161 @@
+#==============================================================================#
+#  Script: Hồi HP bằng với giá trị Frame của Battle
+#  Author: Aijn Soh
+#------------------------------------------------------------------------------
+#  Hướng dẫn:
+#  Thêm lệnh dưới vào Note Tag của Enemies.
+#  <frame_to_recovery_hp:actor>   : actor hồi HP theo giá trị của frame
+#  <frame_to_recovery_hp:enemy>   : enemy hồi HP theo giá trị của frame
+#  <frame_to_recovery_hp:actor>   : actor hồi HP theo giá trị của frame
+#  <frame_to_recovery_hp_limit_actor:5>   : actor giới hạn tối đa hồi 5 HP
+#  <frame_to_recovery_hp_limit_enemy:10>   : enemy giới hạn tối đa hồi 10 HP
+#==============================================================================
+
+module FrameBasedHPRecovery
+  # Đọc note tag từ battler (có thể là actor hoặc enemy) để lấy thông tin về hồi HP
+  def self.extract_recovery_info(battler)
+    recovery_info = []
+
+    if battler.enemy?
+      # Lấy thông tin từ note tag của enemy
+      battler.enemy.note.scan(/<frame_to_recovery_hp:(actor|enemy)>/i) do |match|
+        recovery_info << match[0].downcase
+      end
+    elsif battler.actor?
+      # Lấy thông tin từ note tag của actor
+      battler.actor.note.scan(/<frame_to_recovery_hp:(actor|enemy)>/i) do |match|
+        recovery_info << match[0].downcase
+      end
+    end
+
+    return recovery_info.uniq # Trả về danh sách không trùng lặp
+  end
+
+  # Đọc giới hạn hồi HP từ note tag
+  def self.extract_recovery_limit(battler)
+    limits = { actor: nil, enemy: nil }
+
+    if battler.enemy?
+      # Lấy giới hạn từ note tag của enemy
+      if battler.enemy.note =~ /<frame_to_recovery_hp_limit_enemy:(\d+)>/i
+        limits[:enemy] = $1.to_i
+      end
+      # Lấy giới hạn từ note tag của actor
+      if battler.enemy.note =~ /<frame_to_recovery_hp_limit_actor:(\d+)>/i
+        limits[:actor] = $1.to_i
+      end
+    elsif battler.actor?
+      # Lấy giới hạn từ note tag của actor
+      if battler.actor.note =~ /<frame_to_recovery_hp_limit_actor:(\d+)>/i
+        limits[:actor] = $1.to_i
+      end
+      # Lấy giới hạn từ note tag của enemy
+      if battler.actor.note =~ /<frame_to_recovery_hp_limit_enemy:(\d+)>/i
+        limits[:enemy] = $1.to_i
+      end
+    end
+
+    limits # Trả về một hash chứa giới hạn cho actor và enemy
+  end
+
+  # Hồi HP cho target dựa trên số frame hiện tại
+  def self.recover_hp(target, recovery_limit)
+    frame_count = Graphics.frame_count # Lấy tổng số frame hiện tại
+    recovery_amount = frame_count      # Lượng HP hồi tương ứng với frame
+
+    # Kiểm tra giới hạn hồi HP
+    recovery_limit_value = recovery_limit[target.actor? ? :actor : :enemy]
+    recovery_amount = [recovery_amount, recovery_limit_value].min if recovery_limit_value # Áp dụng giới hạn nếu có
+
+    target.hp += recovery_amount
+    target.hp = [target.hp, target.mhp].min # Đảm bảo không vượt quá max HP
+    SceneManager.scene.display_hp_recovery(target, recovery_amount)
+
+    # Reset lại frame count sau khi hồi HP
+    Graphics.frame_count = 0
+  end
+end
+
+class Game_Battler < Game_BattlerBase
+  alias fb_recovery_after_damage execute_damage
+
+  # Xử lý khi nhận sát thương
+  def execute_damage(user)
+    fb_recovery_after_damage(user)  # Gọi hàm gốc để tính toán sát thương
+
+    # Lấy thông tin về frame-based recovery từ đối tượng bị tấn công (self)
+    recovery_info_self = FrameBasedHPRecovery.extract_recovery_info(self) # Thông tin từ chính đối tượng
+    recovery_info_user = FrameBasedHPRecovery.extract_recovery_info(user) # Thông tin từ kẻ tấn công
+
+    return if recovery_info_self.empty? && recovery_info_user.empty?  # Không hồi HP nếu không có note tag
+
+    # Đợi 30 frame trước khi hồi HP để đảm bảo sát thương đã hoàn tất
+    SceneManager.scene.delay_hp_recovery(self, user, recovery_info_self, recovery_info_user)
+  end
+end
+
+class Scene_Battle < Scene_Base
+  # Hiển thị log hồi HP nhờ số frame
+  def display_hp_recovery(target, recovery_amount)
+    @log_window.add_text("#{target.name} hồi #{recovery_amount} HP nhờ số frame!")
+    @log_window.wait
+  end
+
+  # Thêm hàm đợi (wait) cho việc hồi HP diễn ra sau khi sát thương được gây ra
+  def wait(duration)
+    duration.times { update_for_wait }
+  end
+
+  # Cập nhật màn hình trong thời gian chờ
+  def update_for_wait
+    update_basic
+    @log_window.update if @log_window
+  end
+
+  # Xử lý hồi máu sau thời gian chờ 30 frame
+  def delay_hp_recovery(target, user, recovery_info_self, recovery_info_user)
+    @hp_recovery_target = target
+    @hp_recovery_user = user
+    @hp_recovery_frame_count = 30  # Chờ 30 frame
+    @hp_recovery_info_self = recovery_info_self # Lưu thông tin hồi máu từ đối tượng bị tấn công
+    @hp_recovery_info_user = recovery_info_user # Lưu thông tin hồi máu từ đối tượng tấn công
+  end
+
+  # Cập nhật trạng thái trong trận chiến
+  alias fb_update_basic update_basic
+  def update_basic
+    fb_update_basic
+    if @hp_recovery_frame_count && @hp_recovery_frame_count > 0
+      @hp_recovery_frame_count -= 1
+      if @hp_recovery_frame_count == 0
+        # Lấy giới hạn hồi HP cho target
+        recovery_limit_target = FrameBasedHPRecovery.extract_recovery_limit(@hp_recovery_target)
+
+        # Hồi máu dựa trên loại tag của đối tượng bị tấn công (self)
+        @hp_recovery_info_self.each do |recovery_type|
+          if recovery_type == "actor" && @hp_recovery_target.actor?
+            FrameBasedHPRecovery.recover_hp(@hp_recovery_target, recovery_limit_target)
+          elsif recovery_type == "enemy" && @hp_recovery_target.enemy?
+            FrameBasedHPRecovery.recover_hp(@hp_recovery_target, recovery_limit_target)
+          end
+        end
+
+        # Hồi máu dựa trên loại tag của đối tượng tấn công (user)
+        recovery_limit_user = FrameBasedHPRecovery.extract_recovery_limit(@hp_recovery_user)
+        @hp_recovery_info_user.each do |recovery_type|
+          if recovery_type == "actor" && @hp_recovery_target.actor?
+            FrameBasedHPRecovery.recover_hp(@hp_recovery_target, recovery_limit_user)
+          elsif recovery_type == "enemy" && @hp_recovery_target.enemy?
+            FrameBasedHPRecovery.recover_hp(@hp_recovery_target, recovery_limit_user)
+          end
+        end
+
+        # Reset biến sau khi hồi máu
+        @hp_recovery_target = nil
+        @hp_recovery_user = nil
+        @hp_recovery_info_self = nil
+        @hp_recovery_info_user = nil
+      end
+    end
+  end
+end
