@@ -78,11 +78,6 @@ module FrameBasedHPRecovery
   end
 end
 
-#==============================================================================#
-# ** Game_Battler (Đối tượng chung cho cả Actor và Enemy)                      #
-#------------------------------------------------------------------------------#
-# Chúng ta sẽ mở rộng lớp này để xử lý hồi HP sau khi gây sát thương.          #
-#==============================================================================#
 class Game_Battler < Game_BattlerBase
   alias fb_recovery_after_damage execute_damage
 
@@ -101,11 +96,6 @@ class Game_Battler < Game_BattlerBase
   end
 end
 
-#==============================================================================#
-# ** Scene_Battle                                                              #
-#------------------------------------------------------------------------------#
-# Thêm hàm để hiển thị log hồi HP trên màn hình chiến đấu và xử lý thời gian chờ #
-#==============================================================================#
 class Scene_Battle < Scene_Base
   # Hiển thị log hồi HP nhờ số frame
   def display_hp_recovery(target, recovery_amount)
