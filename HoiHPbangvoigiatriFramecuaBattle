@@ -59,6 +59,9 @@ module FrameBasedHPRecovery
 
   # Hồi HP cho target dựa trên số frame hiện tại
   def self.recover_hp(target, recovery_limit)
+    # Kiểm tra HP hiện tại của target
+    return if target.hp <= 0 # Ngăn chặn hồi HP nếu HP ≤ 0
+
     frame_count = Graphics.frame_count # Lấy tổng số frame hiện tại
     recovery_amount = frame_count      # Lượng HP hồi tương ứng với frame
 
@@ -75,6 +78,11 @@ module FrameBasedHPRecovery
   end
 end
 
+#==============================================================================#
+# ** Game_Battler (Đối tượng chung cho cả Actor và Enemy)                      #
+#------------------------------------------------------------------------------#
+# Chúng ta sẽ mở rộng lớp này để xử lý hồi HP sau khi gây sát thương.          #
+#==============================================================================#
 class Game_Battler < Game_BattlerBase
   alias fb_recovery_after_damage execute_damage
 
@@ -93,6 +101,11 @@ class Game_Battler < Game_BattlerBase
   end
 end
 
+#==============================================================================#
+# ** Scene_Battle                                                              #
+#------------------------------------------------------------------------------#
+# Thêm hàm để hiển thị log hồi HP trên màn hình chiến đấu và xử lý thời gian chờ #
+#==============================================================================#
 class Scene_Battle < Scene_Base
   # Hiển thị log hồi HP nhờ số frame
   def display_hp_recovery(target, recovery_amount)
@@ -111,11 +124,11 @@ class Scene_Battle < Scene_Base
     @log_window.update if @log_window
   end
 
-  # Xử lý hồi máu sau thời gian chờ 30 frame
+  # Xử lý hồi máu sau thời gian chờ 60 frame
   def delay_hp_recovery(target, user, recovery_info_self, recovery_info_user)
     @hp_recovery_target = target
     @hp_recovery_user = user
-    @hp_recovery_frame_count = 30  # Chờ 30 frame
+    @hp_recovery_frame_count = 60  # Chờ 60 frame
     @hp_recovery_info_self = recovery_info_self # Lưu thông tin hồi máu từ đối tượng bị tấn công
     @hp_recovery_info_user = recovery_info_user # Lưu thông tin hồi máu từ đối tượng tấn công
   end
