@@ -6,7 +6,6 @@
 #  Thêm lệnh dưới vào Note Tag của Enemies.
 #  <frame_to_recovery_hp:actor>   : actor hồi HP theo giá trị của frame
 #  <frame_to_recovery_hp:enemy>   : enemy hồi HP theo giá trị của frame
-#  <frame_to_recovery_hp:actor>   : actor hồi HP theo giá trị của frame
 #  <frame_to_recovery_hp_limit_actor:5>   : actor giới hạn tối đa hồi 5 HP
 #  <frame_to_recovery_hp_limit_enemy:10>   : enemy giới hạn tối đa hồi 10 HP
 #==============================================================================
