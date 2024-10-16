@@ -3,7 +3,7 @@
 #  Author: Aijn Soh
 #------------------------------------------------------------------------------
 #  Hướng dẫn:
-#  Sử dụng kỹ năng lần 1 sẽ lưu trữ trạng thái của cả trận đấu, sử dụng kỹ năng lần 2 sẽ hoàn nguyên lại trạng thái của cả trận đấu.
+#  Sử dụng kỹ năng lần 1 sẽ lưu trữ trạng thái, actor, enemy của cả trận đấu, sử dụng kỹ năng lần 2 sẽ hoàn nguyên lại trạng thái, actor, enemy của cả trận đấu.
 #  Thêm lệnh dưới vào Note Tag của Skills.
 #  <time_stone>   : kích hoạt chức năng Time Stone
 #  <single_use_time_stone>   : chỉ sử dụng được một lần trong mỗi trận chiến đấu
@@ -26,7 +26,7 @@ end
 class Game_BattlerBase
   attr_accessor :saved_state
 
-  # Lưu trạng thái hiện tại
+  # Lưu trạng thái hiện tại của battler (actor hoặc enemy)
   def save_current_state
     @saved_state = {
       hp: self.hp,
@@ -84,14 +84,29 @@ class Scene_Battle < Scene_Base
 
   # Lưu trạng thái cho tất cả actor và enemy
   def save_all_states
+    @initial_battlers = all_battlers.map(&:object_id)  # Lưu lại danh sách battler ban đầu
     all_battlers.each { |battler| battler.save_current_state }
-    $game_message.add("Đá Thời Gian đã lưu trữ tất cả trạng thái!")
+    $game_message.add("Đá Thời Gian đã lưu trữ!")
   end
 
   # Hoàn nguyên trạng thái cho tất cả actor và enemy
   def revert_all_states
+    current_battlers = all_battlers.map(&:object_id)  # Danh sách battler hiện tại
+    (current_battlers - @initial_battlers).each do |battler_id|
+      remove_battler(battler_id)  # Xóa battler không có trong danh sách ban đầu
+    end
     all_battlers.each { |battler| battler.revert_to_saved_state }
-    $game_message.add("Đá Thời Gian đã hoàn nguyên tất cả trạng thái!")
+    $game_message.add("Đá Thời Gian đã hoàn nguyên!")
+  end
+
+  # Xóa battler không có trong danh sách ban đầu
+  def remove_battler(battler_id)
+    battler_to_remove = all_battlers.find { |battler| battler.object_id == battler_id }
+    if battler_to_remove
+      battler_to_remove.hide
+      $game_troop.members.delete(battler_to_remove) if battler_to_remove.is_a?(Game_Enemy)
+      $game_party.members.delete(battler_to_remove) if battler_to_remove.is_a?(Game_Actor)
+    end
   end
 
   # Lấy tất cả các actor và enemy trong trận đấu
@@ -109,6 +124,7 @@ class Scene_Battle < Scene_Base
   # Xóa bản lưu trạng thái cho tất cả actor và enemy
   def clear_all_saved_states
     all_battlers.each { |battler| battler.clear_saved_state }
+    @initial_battlers = nil  # Xóa danh sách battler ban đầu
   end
 end
 
