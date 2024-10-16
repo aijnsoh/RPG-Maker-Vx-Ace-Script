@@ -1,9 +1,9 @@
-#==============================================================================#
+#==============================================================================
 #  Script: Hồi HP bằng với giá trị Frame của Battle
 #  Author: Aijn Soh
 #------------------------------------------------------------------------------
 #  Hướng dẫn:
-#  Thêm lệnh dưới vào Note Tag của Enemies.
+#  Thêm lệnh dưới vào Note Tag của Enemies, Actors, Weapons và Armors.
 #  <frame_to_recovery_hp:actor>   : actor hồi HP theo giá trị của frame
 #  <frame_to_recovery_hp:enemy>   : enemy hồi HP theo giá trị của frame
 #  <frame_to_recovery_hp_limit_actor:5>   : actor giới hạn tối đa hồi 5 HP
@@ -15,14 +15,23 @@ module FrameBasedHPRecovery
   def self.extract_recovery_info(battler)
     recovery_info = []
 
-    if battler.enemy?
-      # Lấy thông tin từ note tag của enemy
-      battler.enemy.note.scan(/<frame_to_recovery_hp:(actor|enemy)>/i) do |match|
+    # Kiểm tra note tag của actor
+    if battler.actor?
+      battler.actor.note.scan(/<frame_to_recovery_hp:(actor|enemy)>/i) do |match|
         recovery_info << match[0].downcase
       end
-    elsif battler.actor?
-      # Lấy thông tin từ note tag của actor
-      battler.actor.note.scan(/<frame_to_recovery_hp:(actor|enemy)>/i) do |match|
+      # Kiểm tra note tag của trang bị
+      battler.equips.each do |equip|
+        next unless equip
+        equip.note.scan(/<frame_to_recovery_hp:(actor|enemy)>/i) do |match|
+          recovery_info << match[0].downcase
+        end
+      end
+    end
+
+    # Kiểm tra note tag của enemy
+    if battler.enemy?
+      battler.enemy.note.scan(/<frame_to_recovery_hp:(actor|enemy)>/i) do |match|
         recovery_info << match[0].downcase
       end
     end
@@ -51,6 +60,16 @@ module FrameBasedHPRecovery
       # Lấy giới hạn từ note tag của enemy
       if battler.actor.note =~ /<frame_to_recovery_hp_limit_enemy:(\d+)>/i
         limits[:enemy] = $1.to_i
+      end
+      # Lấy giới hạn từ trang bị
+      battler.equips.each do |equip|
+        next unless equip
+        if equip.note =~ /<frame_to_recovery_hp_limit_actor:(\d+)>/i
+          limits[:actor] = $1.to_i if limits[:actor].nil?
+        end
+        if equip.note =~ /<frame_to_recovery_hp_limit_enemy:(\d+)>/i
+          limits[:enemy] = $1.to_i if limits[:enemy].nil?
+        end
       end
     end
 
