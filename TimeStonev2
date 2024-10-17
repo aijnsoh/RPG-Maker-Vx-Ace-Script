@@ -1,5 +1,5 @@
 #==============================================================================
-#  Script: Time Stone
+#  Script: Time Stone v2
 #  Author: Aijn Soh
 #------------------------------------------------------------------------------
 #  Hướng dẫn:
@@ -26,18 +26,22 @@ end
 class Game_BattlerBase
   attr_accessor :saved_state
 
-  # Lưu trạng thái hiện tại của battler (actor hoặc enemy)
+  # Lưu trạng thái và thông tin đầy đủ của actor
   def save_current_state
     @saved_state = {
+      actor_id: self.is_a?(Game_Actor) ? self.id : nil,
       hp: self.hp,
       mp: self.mp,
       tp: self.tp,
-      states: self.states.map(&:id).clone,  # Lưu ID của các trạng thái (state)
-      buffs: @buffs.clone
+      states: self.states.map(&:id).clone,
+      buffs: @buffs.clone,
+      class_id: self.is_a?(Game_Actor) ? self.class_id : nil,
+      level: self.is_a?(Game_Actor) ? self.level : nil,
+      equips: self.is_a?(Game_Actor) ? self.equips.map { |equip| equip ? equip.id : nil } : nil
     }
   end
 
-  # Hoàn nguyên trạng thái đã lưu
+  # Hoàn nguyên trạng thái và thông tin đã lưu
   def revert_to_saved_state
     return unless @saved_state
     self.hp = @saved_state[:hp]
@@ -90,28 +94,43 @@ class Scene_Battle < Scene_Base
 
   # Lưu trạng thái cho tất cả actor và enemy
   def save_all_states
-    @initial_battlers = all_battlers.map(&:object_id)  # Lưu lại danh sách battler ban đầu
+    @initial_battlers = all_battlers.map { |battler| save_battler_info(battler) }  # Lưu lại danh sách battler ban đầu
     all_battlers.each { |battler| battler.save_current_state }
     $game_message.add("Đá Thời Gian đã lưu trữ!")
   end
 
   # Hoàn nguyên trạng thái cho tất cả actor và enemy
   def revert_all_states
-    current_battlers = all_battlers.map(&:object_id)  # Danh sách battler hiện tại
-    (current_battlers - @initial_battlers).each do |battler_id|
-      remove_battler(battler_id)  # Xóa battler không có trong danh sách ban đầu
-    end
+    # Xử lý khôi phục actor/enemy bị xóa
+    restore_missing_battlers
     all_battlers.each { |battler| battler.revert_to_saved_state }
     $game_message.add("Đá Thời Gian đã hoàn nguyên!")
   end
 
-  # Xóa battler không có trong danh sách ban đầu
-  def remove_battler(battler_id)
-    battler_to_remove = all_battlers.find { |battler| battler.object_id == battler_id }
-    if battler_to_remove
-      battler_to_remove.hide
-      $game_troop.members.delete(battler_to_remove) if battler_to_remove.is_a?(Game_Enemy)
-      $game_party.members.delete(battler_to_remove) if battler_to_remove.is_a?(Game_Actor)
+  # Lưu thông tin battler ban đầu (bao gồm cả actor_id)
+  def save_battler_info(battler)
+    {
+      battler: battler,
+      actor_id: battler.is_a?(Game_Actor) ? battler.id : nil,
+      enemy_id: battler.is_a?(Game_Enemy) ? battler.enemy_id : nil,
+      object_id: battler.object_id
+    }
+  end
+
+  # Khôi phục các actor/enemy đã bị xóa
+  def restore_missing_battlers
+    current_battlers_ids = all_battlers.map(&:object_id)  # Danh sách battler hiện tại
+
+    @initial_battlers.each do |info|
+      next if current_battlers_ids.include?(info[:object_id])  # Bỏ qua nếu battler đang còn trong trận
+
+      if info[:actor_id]  # Khôi phục actor nếu bị xóa
+        actor = $game_actors[info[:actor_id]]
+        $game_party.add_actor(info[:actor_id]) unless $game_party.members.include?(actor)
+      elsif info[:enemy_id]  # Khôi phục enemy nếu bị xóa
+        enemy = Game_Enemy.new($game_troop.troop_id, info[:enemy_id])
+        $game_troop.add_enemy(enemy)
+      end
     end
   end
 
