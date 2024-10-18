@@ -1,0 +1,177 @@
+#==============================================================================
+#  Script: Time Stone v3
+#  Author: Aijn Soh
+#------------------------------------------------------------------------------
+#  Hướng dẫn:
+#  Sử dụng kỹ năng lần 1 sẽ lưu trữ trạng thái, actor của cả trận đấu, sử dụng kỹ năng lần 2 sẽ hoàn nguyên lại trạng thái, actor của cả trận đấu.
+#  Thêm lệnh dưới vào Note Tag của Skills.
+#  <time_stone>   : kích hoạt chức năng Time Stone
+#  <single_use_time_stone>   : chỉ sử dụng được một lần trong mỗi trận chiến đấu
+#==============================================================================
+
+module RPG
+  class Skill < UsableItem
+    # Thêm note tag để kích hoạt chức năng lưu/hoàn nguyên
+    def state_revert_skill?
+      @note =~ /<time_stone>/i
+    end
+
+    # Thêm note tag để hạn chế sử dụng một lần
+    def single_use_state_revert?
+      @note =~ /<single_use_time_stone>/i
+    end
+  end
+end
+
+class Game_BattlerBase
+  attr_accessor :saved_state
+
+  # Lưu trạng thái và thông tin đầy đủ của actor
+  def save_current_state
+    @saved_state = {
+      actor_id: self.is_a?(Game_Actor) ? self.id : nil,
+      hp: self.hp,
+      mp: self.mp,
+      tp: self.tp,
+      states: self.states.map(&:id).clone,
+      buffs: @buffs.clone,
+      class_id: self.is_a?(Game_Actor) ? self.class_id : nil,
+      level: self.is_a?(Game_Actor) ? self.level : nil,
+      equips: self.is_a?(Game_Actor) ? self.equips.map { |equip| equip ? equip.id : nil } : nil
+    }
+  end
+
+  # Hoàn nguyên trạng thái và thông tin đã lưu
+  def revert_to_saved_state
+    return unless @saved_state
+    self.hp = @saved_state[:hp]
+    self.mp = @saved_state[:mp]
+    self.tp = @saved_state[:tp]
+    restore_states(@saved_state[:states])  # Hoàn nguyên lại các trạng thái đã lưu
+    @buffs = @saved_state[:buffs].clone
+    refresh
+    @saved_state = nil  # Xóa bản lưu sau khi hoàn nguyên
+  end
+
+  # Phục hồi các trạng thái từ danh sách state_id
+  def restore_states(state_ids)
+    clear_states  # Xóa tất cả các trạng thái hiện tại
+    state_ids.each { |id| add_state(id) }  # Thêm lại các trạng thái từ danh sách ID
+  end
+
+  # Xóa bản lưu trạng thái
+  def clear_saved_state
+    @saved_state = nil
+  end
+end
+
+class Scene_Battle < Scene_Base
+  alias original_use_item use_item
+
+  def use_item
+    item = @subject.current_action.item
+
+    if item.is_a?(RPG::Skill) && item.state_revert_skill?
+      if item.single_use_state_revert? && $game_temp.state_revert_used
+        $game_message.add("Không thể sử dụng Đá Thời Gian!")
+      elsif any_saved_state?
+        revert_all_states
+        $game_temp.state_revert_used = true if item.single_use_state_revert?
+      else
+        save_all_states
+      end
+      return  # Bỏ qua phương thức gốc để ngăn việc áp dụng hiệu ứng thông thường
+    end
+
+    # Nếu không phải skill có note tag thì gọi lại phương thức gốc
+    original_use_item
+  end
+
+  # Kiểm tra xem có bất kỳ trạng thái nào đã được lưu chưa
+  def any_saved_state?
+    all_battlers.any? { |battler| battler.saved_state }
+  end
+
+  # Lưu trạng thái cho tất cả actor
+  def save_all_states
+    @initial_battlers = all_battlers.map { |battler| save_battler_info(battler) }  # Lưu lại danh sách battler ban đầu
+    all_battlers.each { |battler| battler.save_current_state }
+    $game_message.add("Đá Thời Gian đã lưu trữ!")
+  end
+
+  # Hoàn nguyên trạng thái cho tất cả actor
+  def revert_all_states
+    # Xử lý khôi phục actor bị xóa
+    restore_missing_battlers
+    all_battlers.each { |battler| battler.revert_to_saved_state }
+    remove_extra_battlers  # Xóa các actor đã được thêm vào sau khi lưu
+    $game_message.add("Đá Thời Gian đã hoàn nguyên!")
+  end
+
+  # Lưu thông tin battler ban đầu (bao gồm cả actor_id)
+  def save_battler_info(battler)
+    {
+      battler: battler,
+      actor_id: battler.is_a?(Game_Actor) ? battler.id : nil,
+      object_id: battler.object_id
+    }
+  end
+
+  # Khôi phục các actor đã bị xóa
+  def restore_missing_battlers
+    current_battlers_ids = all_battlers.map(&:object_id)  # Danh sách battler hiện tại
+
+    @initial_battlers.each do |info|
+      next if current_battlers_ids.include?(info[:object_id])  # Bỏ qua nếu battler đang còn trong trận
+
+      if info[:actor_id]  # Khôi phục actor nếu bị xóa
+        actor = $game_actors[info[:actor_id]]
+        $game_party.add_actor(info[:actor_id]) unless $game_party.members.include?(actor)
+      end
+    end
+  end
+
+  # Xóa các actor đã được thêm vào sau khi lưu trạng thái
+  def remove_extra_battlers
+    current_battlers_ids = all_battlers.map(&:object_id)
+    extra_battlers = current_battlers_ids - @initial_battlers.map { |info| info[:object_id] }
+
+    extra_battlers.each do |battler_id|
+      battler_to_remove = all_battlers.find { |battler| battler.object_id == battler_id }
+      if battler_to_remove
+        if battler_to_remove.is_a?(Game_Actor)
+          $game_party.remove_actor(battler_to_remove.id)
+        end
+      end
+    end
+  end
+
+  # Lấy tất cả các actor trong trận đấu
+  def all_battlers
+    $game_party.members
+  end
+
+  # Xóa bản lưu trạng thái khi thoát khỏi trận đấu
+  alias original_terminate terminate
+  def terminate
+    clear_all_saved_states
+    original_terminate
+  end
+
+  # Xóa bản lưu trạng thái cho tất cả actor
+  def clear_all_saved_states
+    all_battlers.each { |battler| battler.clear_saved_state }
+    @initial_battlers = nil  # Xóa danh sách battler ban đầu
+  end
+end
+
+class Game_Temp
+  attr_accessor :state_revert_used
+
+  alias original_initialize initialize
+
+  def initialize
+    original_initialize
+    @state_revert_used = false  # Đặt mặc định là false cho mỗi trận chiến mới
+  end
+end
