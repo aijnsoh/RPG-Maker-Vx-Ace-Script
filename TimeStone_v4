@@ -1,5 +1,5 @@
 #==============================================================================
-#  Script: Time Stone v3
+#  Script: Time Stone v4
 #  Author: Aijn Soh
 #------------------------------------------------------------------------------
 #  Hướng dẫn:
@@ -66,8 +66,15 @@ class Game_BattlerBase
 end
 
 class Scene_Battle < Scene_Base
+  alias original_start start
+  
+  def start
+    original_start
+    $game_temp.state_revert_used = false  # Reset lại biến khi bắt đầu trận chiến mới
+  end
+  
   alias original_use_item use_item
-
+  
   def use_item
     item = @subject.current_action.item
 
@@ -80,10 +87,9 @@ class Scene_Battle < Scene_Base
       else
         save_all_states
       end
-      return  # Bỏ qua phương thức gốc để ngăn việc áp dụng hiệu ứng thông thường
     end
 
-    # Nếu không phải skill có note tag thì gọi lại phương thức gốc
+    # Sau khi xử lý Time Stone, gọi lại phương thức gốc để animation và các hiệu ứng khác chạy
     original_use_item
   end
 
