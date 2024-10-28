@@ -1,0 +1,66 @@
+#==============================================================================
+#  Script: Giảm HP theo số giây
+#  Author: Aijn Soh
+#------------------------------------------------------------------------------
+#  Thông tin:
+#  Script cho phép actor giảm HP của enemy mỗi giây.
+#  Tỷ lệ sát thương sẽ tính theo % HP của Actor.
+#  Được thiết lập qua note tag trong Vũ Khí và Trang Bị trong Database.
+#------------------------------------------------------------------------------
+#  Hướng dẫn:
+#  Thêm lệnh dưới vào Note Tag của Vũ Khí hoặc Trang Bị.
+#  <hp_reduction_per_second: x, y>   : gây sát thương cho Enemy theo giây
+#  (x là phần trăm từ 0 đến 100 phần trăm giá trị HP của Actor, y là số giây)
+#==============================================================================
+
+module RPG
+  class BaseItem
+    # Đọc và lưu giá trị phần trăm HP và khoảng thời gian từ note tag
+    def hp_reduction_per_second_effect
+      if @hp_reduction_per_second_effect.nil?
+        if self.note =~ /<hp_reduction_per_second:\s*(\d+),\s*(\d+)>/i
+          @hp_reduction_per_second_effect = { percent: $1.to_i, interval: $2.to_i }
+        else
+          @hp_reduction_per_second_effect = { percent: 0, interval: 1 }
+        end
+      end
+      @hp_reduction_per_second_effect
+    end
+  end
+end
+
+class Game_Battler
+  # Lấy phần trăm HP drain và khoảng thời gian từ vũ khí hoặc trang bị
+  def hp_reduction_per_second_effect
+    equips.compact.each do |equip|
+      return equip.hp_reduction_per_second_effect if equip.hp_reduction_per_second_effect[:percent] > 0
+    end
+    return { percent: 0, interval: 1 }
+  end
+
+  # Áp dụng sát thương theo % HP drain nếu đã đến thời gian gây sát thương
+  def apply_hp_reduction_per_second
+    effect = hp_reduction_per_second_effect
+    if effect[:percent] > 0 && Graphics.frame_count % (effect[:interval] * 60) == 0
+      drain_amount = (self.hp * effect[:percent] / 100.0).to_i
+      opponents_unit.alive_members.each do |opponent|
+        opponent.hp -= drain_amount
+        opponent.perform_collapse_effect if opponent.dead?
+      end
+    end
+  end
+end
+
+class Scene_Battle < Scene_Base
+  alias original_update_basic update_basic
+  def update_basic
+    original_update_basic
+    apply_hp_reduction_per_second_effect
+  end
+
+  def apply_hp_reduction_per_second_effect
+    $game_party.battle_members.each do |actor|
+      actor.apply_hp_reduction_per_second if actor.hp_reduction_per_second_effect[:percent] > 0
+    end
+  end
+end
