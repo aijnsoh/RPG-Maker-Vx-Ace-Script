@@ -1,0 +1,163 @@
+#==============================================================================
+#  Script: Tăng chỉ số trang bị khi tiêu diệt đối thủ
+#  Author: Aijn Soh
+#------------------------------------------------------------------------------
+#  Thông tin:
+#  Script cho phép actor giết enemy để tăng chỉ số cho Vũ Khí hoặc Trang Bị.
+#  Được thiết lập qua note tag trong Vũ Khí và Trang Bị trong Database.
+#------------------------------------------------------------------------------
+#  Hướng dẫn:
+#  Thêm lệnh dưới vào Note Tag của Vũ Khí hoặc Trang Bị.
+#  Ví dụ:  <equipment_stat_increase_on_kill: HP, 10, 50, "Sức Khỏe">
+#  Các thông số trên của note tag là:
+#  - HP là MaxHP của Actor, có thể thiết lập: HP, MP, ATK, DEF, MAT, MDF, AGI, LUK.
+#  - 10 là giá trị tăng lên mỗi lần giết một enemy, có thể thiết lập giá trị khác.
+#  - 50 là giá trị tối đa có thể tăng lên của một Vũ Khí hoặc Trang Bị, có thể thiết lập giá trị khác.
+#  - "Sức Khỏe" là tên hiện trong phần mô tả của một Vũ Khí hoặc Trang Bị, có thể thay đổi theo ý thích.
+#==============================================================================
+
+module StatOnKill
+  # Regular expression to parse note tags
+  NOTE_TAG_REGEX = /<equipment_stat_increase_on_kill:\s*(\w+),\s*(\d+),\s*(\d+),?\s*"(.*?)"\s*>/i
+
+  # Initialize equipment with stat boost data
+  def self.initialize_equip_stat(equip)
+    return unless equip
+    equip.stat_on_kill ||= {}
+
+    # Parse all note tags for multiple stats
+    equip.note.scan(NOTE_TAG_REGEX).each do |match|
+      stat, amount, max, display_name = match
+      amount = amount.to_i
+      max = max.to_i
+      display_name ||= stat.capitalize # Default to stat name if no display name is provided
+
+      equip.stat_on_kill[stat.upcase] ||= { current: 0, increment: amount, max: max, display_name: display_name }
+    end
+
+    # Update the description with current and max stats
+    update_description(equip)
+  end
+
+  # Update the equipment description with current stat and max stat
+  def self.update_description(equip)
+    return unless equip && equip.stat_on_kill
+
+    # Create descriptions based on the current state of stats
+    descriptions = equip.stat_on_kill.map do |stat, data|
+      "#{data[:display_name]}:#{data[:current]}/#{data[:max]}"
+    end
+
+    # Update the equipment description
+    if equip.description.nil? || equip.description.empty?
+      equip.description = descriptions.join(", ") # New description
+    else
+      # Combine existing description with new stat information
+      existing_description = equip.description.split("\n").first # Keep existing description
+      equip.description = "#{existing_description}\n" + descriptions.join(", ") # Combine with stats
+    end
+  end
+
+  # Update all equip descriptions when the game starts
+  def self.update_all_equip_descriptions
+    $data_weapons.each { |weapon| initialize_equip_stat(weapon) if weapon }
+    $data_armors.each { |armor| initialize_equip_stat(armor) if armor }
+  end
+end
+
+# Extend RPG::EquipItem (base class for RPG::Weapon and RPG::Armor)
+class RPG::EquipItem
+  attr_accessor :stat_on_kill, :description
+end
+
+# Extend Game_Battler (parent class of Game_Enemy and Game_Actor)
+class Game_Battler
+  alias original_die die
+  def die
+    original_die
+    return unless self.is_a?(Game_Enemy)
+
+    $game_party.all_members.each do |actor|
+      actor.equips.compact.each do |equip|
+        next unless equip && equip.stat_on_kill
+
+        equip.stat_on_kill.each do |stat, data|
+          if data[:current] < data[:max]
+            # Calculate new value without exceeding the max limit
+            new_value = data[:current] + data[:increment]
+            data[:current] = [new_value, data[:max]].min
+            apply_stat_increase(actor, stat, data[:current] - new_value + data[:increment])
+          end
+        end
+        # Update the description with current and max values
+        StatOnKill.update_description(equip)
+      end
+    end
+  end
+
+  def apply_stat_increase(actor, stat, amount)
+    param_id = case stat
+               when "HP"   then 0  # Max HP
+               when "MP"   then 1  # Max MP
+               when "ATK"  then 2  # Attack
+               when "DEF"  then 3  # Defense
+               when "MAT"  then 4  # Magic Attack
+               when "MDF"  then 5  # Magic Defense
+               when "AGI"  then 6  # Agility
+               when "LUK"  then 7  # Luck
+               else return
+               end
+    actor.add_param(param_id, amount)
+  end
+end
+
+# Parse note tags for weapons and armors
+class Game_Actor < Game_Battler
+  alias original_change_equip change_equip
+  def change_equip(slot_id, item)
+    # Reduce stats for the item being removed
+    old_item = equips[slot_id]
+    if old_item && old_item.stat_on_kill
+      old_item.stat_on_kill.each do |stat, data|
+        if data[:current] > 0
+          apply_stat_decrease(stat, data[:current])
+        end
+      end
+    end
+
+    # Call the original change_equip method
+    original_change_equip(slot_id, item)
+
+    # Restore stats for the new item equipped
+    new_item = equips[slot_id]
+    if new_item && new_item.stat_on_kill
+      new_item.stat_on_kill.each do |stat, data|
+        apply_stat_increase(self, stat, data[:current]) if data[:current] > 0
+      end
+    end
+  end
+
+  def apply_stat_decrease(stat, current)
+    param_id = case stat
+               when "HP"   then 0  # Max HP
+               when "MP"   then 1  # Max MP
+               when "ATK"  then 2  # Attack
+               when "DEF"  then 3  # Defense
+               when "MAT"  then 4  # Magic Attack
+               when "MDF"  then 5  # Magic Defense
+               when "AGI"  then 6  # Agility
+               when "LUK"  then 7  # Luck
+               else return
+               end
+    $game_party.members.each { |actor| actor.add_param(param_id, -current) } # Decrease stat for all actors
+  end
+end
+
+# Call update_all_equip_descriptions when the game starts
+class Scene_Title < Scene_Base
+  alias original_start start
+  def start
+    original_start
+    StatOnKill.update_all_equip_descriptions
+  end
+end
