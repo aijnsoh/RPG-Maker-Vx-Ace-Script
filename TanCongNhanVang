@@ -9,19 +9,19 @@
 #------------------------------------------------------------------------------
 #  Hướng dẫn:
 #  Thêm lệnh dưới vào Note Tag của Vũ Khí hoặc Trang Bị.
-#  <Gold_Chance: x>   : tỉ lệ nhận vàng (x là phần trăm, từ 0 đến 100)
-#  <Gold_Amount: y>   : số vàng nhận được mỗi lần tấn công (y là số lượng vàng)
+#  <ReceiveGold_Chance: x>   : tỉ lệ nhận vàng (x là phần trăm, từ 0 đến 100)
+#  <ReceiveGold_Amount: y>   : số vàng nhận được mỗi lần tấn công (y là số lượng vàng)
 #==============================================================================
 
 module GoldOnAttack
 
   def self.gold_chance(item)
-    note = item.note[/\<Gold_Chance:\s*(\d+)\>/i]
+    note = item.note[/\<ReceiveGold_Chance:\s*(\d+)\>/i]
     note ? $1.to_i : 0
   end
 
   def self.gold_amount(item)
-    note = item.note[/\<Gold_Amount:\s*(\d+)\>/i]
+    note = item.note[/\<ReceiveGold_Amount:\s*(\d+)\>/i]
     note ? $1.to_i : 0
   end
 end
