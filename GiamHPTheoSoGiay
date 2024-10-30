@@ -10,7 +10,7 @@
 #  Hướng dẫn:
 #  Thêm lệnh dưới vào Note Tag của Vũ Khí hoặc Trang Bị.
 #  <hp_reduction_per_second: x, y>   : gây sát thương cho Enemy theo giây
-#  (x là phần trăm từ 0 đến 100 phần trăm giá trị HP của Actor, y là số giây)
+#  x là phần trăm từ 0 đến 100 phần trăm giá trị HP của Actor, y là số giây
 #==============================================================================
 
 module RPG
@@ -46,8 +46,20 @@ class Game_Battler
       opponents_unit.alive_members.each do |opponent|
         opponent.hp -= drain_amount
         opponent.perform_collapse_effect if opponent.dead?
+
+        # Hiện thông báo log khi gây sát thương
+        show_damage_log(opponent, drain_amount)
       end
     end
+  end
+
+  # Hàm để hiển thị log gây sát thương
+  def show_damage_log(opponent, damage)
+    # Lấy đối tượng Window_BattleLog
+    battle_log_window = SceneManager.scene.instance_variable_get(:@log_window)
+    
+    # Thêm thông báo vào Window_BattleLog
+    battle_log_window.add_text("#{self.name} đã gây #{damage} sát thương cho #{opponent.name}!")
   end
 end
 
