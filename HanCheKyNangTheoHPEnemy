@@ -1,0 +1,40 @@
+#==============================================================================
+#  Script: Hạn chế kỹ năng theo HP enemy
+#  Author: Aijn Soh
+#------------------------------------------------------------------------------
+#  Hướng dẫn:
+#  Thêm lệnh dưới vào Note Tag của Skills.
+#  <skill_activation_hp_threshold: 50>   : là khi HP của enemy còn 50% thì skill có gắn note tag mới có thể sử dụng.
+#==============================================================================
+
+module SkillThreshold
+  # Phương thức kiểm tra ngưỡng HP từ note tag của skill
+  def self.skill_hp_threshold(skill)
+    if skill.note =~ /<skill_activation_hp_threshold:\s*(\d+)>/i
+      [$1.to_i, 0].max # Đảm bảo không âm
+    else
+      nil # Trả về nil nếu skill không có note tag
+    end
+  end
+
+  # Phương thức kiểm tra xem skill có thể sử dụng được không
+  def self.can_use_skill?(user, skill)
+    threshold = skill_hp_threshold(skill)
+    return true if threshold.nil? # Nếu không có note tag, cho phép sử dụng skill
+
+    # Kiểm tra nếu có ít nhất một enemy có HP thấp hơn ngưỡng thiết lập
+    $game_troop.alive_members.any? do |enemy|
+      enemy.hp <= (enemy.mhp * threshold / 100.0)
+    end
+  end
+end
+
+class Game_Battler < Game_BattlerBase
+  alias original_skill_conditions_met? skill_conditions_met?
+
+  def skill_conditions_met?(skill)
+    return false unless original_skill_conditions_met?(skill)
+    return SkillThreshold.can_use_skill?(self, skill) if self.is_a?(Game_Actor)
+    true
+  end
+end
