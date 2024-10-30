@@ -1,0 +1,47 @@
+#==============================================================================
+#  Script: Trang bị Súng Hải Tặc trong LMHT
+#  Author: Aijn Soh
+#------------------------------------------------------------------------------
+#  Thông tin:
+#  Script cho phép actor kết liễu enemy khi % HP của enemy đạt đến mức đã thiết lập.
+#  Được thiết lập qua note tag trong Vũ Khí và Trang Bị trong Database.
+#------------------------------------------------------------------------------
+#  Hướng dẫn:
+#  Thêm lệnh dưới vào Note Tag của Vũ Khí hoặc Trang Bị.
+#  <insta_kill_hp:20>   : sẽ giết enemy ngay lập tức khi HP của enemy giảm xuống 20% hoặc thấp hơn.
+#==============================================================================
+
+module InstaKillSettings
+  TAG_NAME = /<insta_kill_hp:(\d+)>/ # Note tag để thiết lập %HP cho chức năng insta-kill
+end
+
+class RPG::BaseItem
+  # Phương thức để đọc và lưu giá trị từ note tag <insta_kill_hp:X>
+  def insta_kill_threshold
+    @insta_kill_threshold ||= begin
+      match = self.note.match(InstaKillSettings::TAG_NAME)
+      match ? match[1].to_i : nil
+    end
+  end
+end
+
+class Game_Battler < Game_BattlerBase
+  alias_method :custom_item_user_effect, :item_user_effect
+
+  # Phương thức custom_item_user_effect để kiểm tra insta-kill sau khi dùng item
+  def item_user_effect(user, item)
+    custom_item_user_effect(user, item)
+    return unless user.actor? && item.is_a?(RPG::Skill) # Chỉ áp dụng cho actor và skill
+
+    # Lấy danh sách tất cả trang bị và vũ khí của actor
+    equips = user.equips.compact
+    equips.each do |equip|
+      threshold = equip.insta_kill_threshold
+      # Kiểm tra có note tag insta_kill_hp và HP enemy giảm dưới % thiết lập
+      if threshold && self.hp <= self.mhp * (threshold / 100.0)
+        self.hp = 0 # Giết chết enemy ngay lập tức
+        break
+      end
+    end
+  end
+end
